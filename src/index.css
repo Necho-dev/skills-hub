@@ -1,0 +1,353 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ════════════════════════════════════════════════════════════
+   Catppuccin Macchiato — Dark palette tokens
+   Base:    #24273a   Surface0: #363a4f   Surface1: #494d64
+   Surface2:#5b6078   Overlay0: #6e738d   Overlay1: #8087a2
+   Text:    #cad3f5   Subtext1: #b8c0e0   Subtext0: #a5adcb
+   Mantle:  #1e2030   Crust:    #181926
+   Mauve:   #c6a0f6   Lavender: #b7bdf8   Blue: #8aadf4
+   Sapphire:#7dc4e4   Sky: #91d7e3        Teal: #8bd5ca
+   Green:   #a6da95   Yellow:  #eed49f    Peach: #f5a97f
+   Maroon:  #ee99a0   Red:     #ed8796    Pink: #f5bde6
+   ════════════════════════════════════════════════════════════ */
+
+/* ── CSS 自定义属性 ─────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* shadcn/ui 兼容变量 */
+    --background: 0 0% 100%;
+    --foreground: 224 71.4% 4.1%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 262.1 83.3% 57.8%;
+    --primary: 262.1 83.3% 57.8%;
+    --primary-foreground: 210 20% 98%;
+    --muted: 220 14.3% 95.9%;
+    --muted-foreground: 220 8.9% 46.1%;
+    --radius: 0.5rem;
+
+    /* 应用色调 */
+    --app-bg:      #ffffff;
+    --app-surface: #f8f9fa;
+    --app-panel:   #f3f4f6;
+    --app-border:  #e5e7eb;
+    --app-border2: #f3f4f6;
+    --app-text:    #111827;
+    --app-text2:   #374151;
+    --app-text3:   #6b7280;
+    --app-text4:   #9ca3af;
+    --app-hover:   #f9fafb;
+    --app-hover2:  #f3f4f6;
+    --app-sel:     #f5f3ff;
+    --app-sel2:    #ede9fe;
+    --app-purple:  #7c3aed;
+    --app-purple2: #6d28d9;
+    --app-badge-bg:     #ede9fe;
+    --app-badge-text:   #6d28d9;
+    --app-badge-border: #ddd6fe;
+  }
+
+  .dark {
+    color-scheme: dark;
+    /* shadcn/ui 兼容 */
+    --background: 232 23% 18%;
+    --foreground: 228 100% 92%;
+    --border: 233 23% 28%;
+    --input: 233 23% 28%;
+    --ring: 267 83% 81%;
+    --primary: 267 83% 81%;
+    --primary-foreground: 232 23% 18%;
+    --muted: 232 18% 25%;
+    --muted-foreground: 228 39% 75%;
+
+    /* Catppuccin Macchiato 应用色调 */
+    --app-bg:      #24273a;
+    --app-surface: #1e2030;
+    --app-panel:   #363a4f;
+    --app-border:  #363a4f;
+    --app-border2: #494d64;
+    --app-text:    #cad3f5;
+    --app-text2:   #b8c0e0;
+    --app-text3:   #8087a2;
+    --app-text4:   #6e738d;
+    --app-hover:   #2a2d3e;
+    --app-hover2:  #363a4f;
+    --app-sel:     #2d2a45;
+    --app-sel2:    #3d3560;
+    --app-purple:  #c6a0f6;
+    --app-purple2: #b7bdf8;
+    --app-badge-bg:     #2d2a45;
+    --app-badge-text:   #c6a0f6;
+    --app-badge-border: #3d3560;
+  }
+
+  * { border-color: var(--app-border); }
+
+  body {
+    background-color: var(--app-bg);
+    color: var(--app-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* ── 浅色细滚动条 ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+  /* ── 深色细滚动条 ── */
+  .dark ::-webkit-scrollbar { width: 4px; height: 4px; }
+  .dark ::-webkit-scrollbar-track { background: transparent; }
+  .dark ::-webkit-scrollbar-thumb { background: #363a4f; border-radius: 999px; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #494d64; }
+
+  /* ── 隐藏滚动条（但保留可滚动性）── */
+  .scrollbar-hide { scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+}
+
+/* ── 全局深色覆盖（用 CSS 变量驱动，替代逐类覆盖）── */
+.dark {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
+
+/* 容器背景 */
+.dark .bg-white,
+.dark .bg-gray-50\/50 { background-color: var(--app-bg) !important; }
+.dark .bg-gray-50      { background-color: var(--app-surface) !important; }
+.dark .bg-gray-100     { background-color: var(--app-panel) !important; }
+.dark .bg-gray-200     { background-color: #494d64 !important; }
+.dark .bg-red-50       { background-color: #3b1219 !important; }
+
+/* hover 背景 */
+.dark .hover\:bg-white:hover          { background-color: var(--app-bg) !important; }
+.dark .hover\:bg-gray-50:hover        { background-color: var(--app-hover) !important; }
+.dark .hover\:bg-gray-100:hover       { background-color: var(--app-panel) !important; }
+.dark .hover\:bg-gray-200:hover       { background-color: #494d64 !important; }
+.dark .hover\:bg-red-50:hover         { background-color: #3b1219 !important; }
+.dark .hover\:bg-red-100:hover        { background-color: #4a1520 !important; }
+
+/* 选中高亮 — Macchiato Mauve tinted */
+.dark .bg-purple-50         { background-color: var(--app-sel) !important; }
+.dark .bg-purple-100        { background-color: var(--app-sel2) !important; }
+.dark .hover\:bg-purple-50:hover  { background-color: var(--app-sel) !important; }
+.dark .hover\:bg-purple-100:hover { background-color: var(--app-sel2) !important; }
+
+/* 文字颜色 */
+.dark .text-gray-900 { color: var(--app-text)  !important; }
+.dark .text-gray-800 { color: var(--app-text)  !important; }
+.dark .text-gray-700 { color: var(--app-text2) !important; }
+.dark .text-gray-600 { color: var(--app-text2) !important; }
+.dark .text-gray-500 { color: var(--app-text3) !important; }
+.dark .text-gray-400 { color: var(--app-text4) !important; }
+
+/* hover 文字 */
+.dark .hover\:text-gray-900:hover { color: var(--app-text)  !important; }
+.dark .hover\:text-gray-800:hover { color: var(--app-text)  !important; }
+.dark .hover\:text-gray-700:hover { color: var(--app-text2) !important; }
+.dark .hover\:text-gray-600:hover { color: var(--app-text2) !important; }
+.dark .hover\:text-red-500:hover  { color: #ed8796 !important; }
+.dark .hover\:text-red-700:hover  { color: #ee99a0 !important; }
+
+/* 紫色 — Mauve */
+.dark .text-purple-600         { color: #c6a0f6 !important; }
+.dark .text-purple-700         { color: #b7bdf8 !important; }
+.dark .hover\:text-purple-600:hover { color: #c6a0f6 !important; }
+.dark .hover\:text-purple-700:hover { color: #b7bdf8 !important; }
+
+/* 紫色背景 active */
+.dark .bg-purple-600              { background-color: #8b5cf6 !important; }
+.dark .hover\:bg-purple-700:hover { background-color: #7c3aed !important; }
+
+/* border-l 选中线 */
+.dark .border-l-purple-500 { border-left-color: #c6a0f6 !important; }
+
+/* 边框 */
+.dark .border-gray-100,
+.dark .border-gray-200 { border-color: var(--app-border) !important; }
+
+/* 输入框 */
+.dark input,
+.dark textarea { 
+  color: var(--app-text) !important;
+  background-color: transparent !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder { color: var(--app-text4) !important; }
+
+/* Platform badge 颜色 — Catppuccin */
+.dark .bg-blue-100    { background-color: #1c3a5e !important; }
+.dark .text-blue-700  { color: #8aadf4 !important; }
+.dark .border-blue-200 { border-color: #264d7a !important; }
+.dark .bg-orange-100  { background-color: #3d2110 !important; }
+.dark .text-orange-700 { color: #f5a97f !important; }
+.dark .border-orange-200 { border-color: #5a3118 !important; }
+.dark .bg-indigo-100  { background-color: #1f1d42 !important; }
+.dark .text-indigo-700 { color: #b7bdf8 !important; }
+.dark .border-indigo-200 { border-color: #303070 !important; }
+
+/* 红色 */
+.dark .text-red-600 { color: #ed8796 !important; }
+.dark .text-red-500 { color: #ee99a0 !important; }
+
+/* ── Markdown 预览 — 浅色 ─────────────────────────────────── */
+.md-preview {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #374151;
+}
+
+.md-preview > *:first-child { margin-top: 0 !important; }
+
+.md-preview h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #111827;
+  margin-top: 0;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #e5e7eb;
+  letter-spacing: -0.01em;
+}
+.md-preview h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin-top: 1.4rem;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+.md-preview h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 1.1rem;
+  margin-bottom: 0.3rem;
+}
+.md-preview h4, .md-preview h5, .md-preview h6 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin-top: 0.875rem;
+  margin-bottom: 0.25rem;
+}
+.md-preview p { margin: 0 0 0.6rem; color: #374151; }
+.md-preview ul, .md-preview ol { margin: 0.25rem 0 0.6rem; padding-left: 1.375rem; }
+.md-preview ul { list-style-type: disc; }
+.md-preview ol { list-style-type: decimal; }
+.md-preview li { margin: 0.15rem 0; color: #374151; }
+.md-preview li > p { margin: 0; }
+
+.md-preview blockquote {
+  border-left: 2px solid #a78bfa;
+  background-color: #faf8ff;
+  padding: 0.4rem 0.875rem;
+  margin: 0.6rem 0;
+  border-radius: 0 0.25rem 0.25rem 0;
+}
+.md-preview blockquote p { margin: 0; color: #6b7280; font-style: italic; font-size: 0.8125rem; }
+
+.md-preview code:not(pre code) {
+  background-color: #f3f0ff;
+  color: #6d28d9;
+  padding: 0.1em 0.35em;
+  border-radius: 0.2rem;
+  font-size: 0.8em;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  font-weight: 500;
+  border: 1px solid #ede9fe;
+}
+.md-preview pre {
+  background-color: #f8f9fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.4rem;
+  padding: 0.75rem 1rem;
+  margin: 0.6rem 0;
+  overflow-x: auto;
+}
+.md-preview pre code {
+  background: transparent;
+  color: #1f2937;
+  font-size: 0.78rem;
+  font-family: "SF Mono", "Fira Code", ui-monospace, monospace;
+  padding: 0;
+  line-height: 1.6;
+  border: none;
+}
+
+.md-preview pre .hljs-keyword    { color: #7c3aed; font-weight: 500; }
+.md-preview pre .hljs-string     { color: #059669; }
+.md-preview pre .hljs-comment    { color: #9ca3af; font-style: italic; }
+.md-preview pre .hljs-number     { color: #d97706; }
+.md-preview pre .hljs-function   { color: #2563eb; }
+.md-preview pre .hljs-title      { color: #2563eb; font-weight: 500; }
+.md-preview pre .hljs-built_in   { color: #dc2626; }
+.md-preview pre .hljs-variable   { color: #1f2937; }
+.md-preview pre .hljs-attr       { color: #0891b2; }
+.md-preview pre .hljs-type       { color: #d97706; }
+.md-preview pre .hljs-literal    { color: #7c3aed; }
+.md-preview pre .hljs-operator   { color: #374151; }
+.md-preview pre .hljs-punctuation{ color: #6b7280; }
+.md-preview pre .hljs-tag        { color: #dc2626; }
+.md-preview pre .hljs-name       { color: #7c3aed; }
+.md-preview pre .hljs-meta       { color: #6b7280; }
+.md-preview pre .hljs-params     { color: #374151; }
+.md-preview pre .hljs-property   { color: #0891b2; }
+
+.md-preview hr { border: none; border-top: 1px solid #e5e7eb; margin: 1rem 0; }
+.md-preview a { color: #7c3aed; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: #c4b5fd; }
+.md-preview a:hover { color: #6d28d9; text-decoration-color: #7c3aed; }
+
+.md-preview table { width: 100%; border-collapse: collapse; font-size: 0.79rem; margin: 0.6rem 0; border: 1px solid #e5e7eb; border-radius: 0.375rem; overflow: hidden; }
+.md-preview th { background-color: #f9fafb; font-weight: 600; color: #374151; padding: 0.4rem 0.625rem; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.md-preview td { padding: 0.35rem 0.625rem; border-bottom: 1px solid #f3f4f6; color: #4b5563; }
+.md-preview tr:last-child td { border-bottom: none; }
+.md-preview tr:hover td { background-color: #fafafa; }
+.md-preview img { max-width: 100%; border-radius: 0.375rem; border: 1px solid #e5e7eb; margin: 0.4rem 0; }
+.md-preview strong { font-weight: 600; color: #111827; }
+.md-preview em { color: #4b5563; }
+
+/* ── Markdown 预览 — 深色 (Catppuccin Macchiato) ─────────── */
+.dark .md-preview                     { color: #b8c0e0; }
+.dark .md-preview h1                  { color: #cad3f5; border-bottom-color: #363a4f; }
+.dark .md-preview h2                  { color: #cad3f5; border-bottom-color: #2a2d3e; }
+.dark .md-preview h3                  { color: #b8c0e0; }
+.dark .md-preview h4,
+.dark .md-preview h5,
+.dark .md-preview h6                  { color: #a5adcb; }
+.dark .md-preview p                   { color: #b8c0e0; }
+.dark .md-preview li                  { color: #b8c0e0; }
+.dark .md-preview blockquote          { background-color: #2d2a45; border-left-color: #c6a0f6; }
+.dark .md-preview blockquote p        { color: #8087a2; }
+.dark .md-preview code:not(pre code)  { background-color: #2d2a45; color: #c6a0f6; border-color: #3d3560; }
+/* 深色代码块 — Macchiato Mantle 底色 */
+.dark .md-preview pre                 { background-color: #1e2030; border-color: #363a4f; }
+.dark .md-preview pre code            { color: #cad3f5; }
+.dark .md-preview pre .hljs-keyword   { color: #c6a0f6; font-weight: 500; } /* Mauve */
+.dark .md-preview pre .hljs-string    { color: #a6da95; }                   /* Green */
+.dark .md-preview pre .hljs-comment   { color: #5b6078; font-style: italic; }/* Surface2 */
+.dark .md-preview pre .hljs-number    { color: #eed49f; }                   /* Yellow */
+.dark .md-preview pre .hljs-function  { color: #8aadf4; }                   /* Blue */
+.dark .md-preview pre .hljs-title     { color: #8aadf4; font-weight: 500; }
+.dark .md-preview pre .hljs-built_in  { color: #ed8796; }                   /* Red */
+.dark .md-preview pre .hljs-variable  { color: #cad3f5; }
+.dark .md-preview pre .hljs-attr      { color: #7dc4e4; }                   /* Sapphire */
+.dark .md-preview pre .hljs-type      { color: #eed49f; }
+.dark .md-preview pre .hljs-literal   { color: #c6a0f6; }
+.dark .md-preview pre .hljs-operator  { color: #8087a2; }
+.dark .md-preview pre .hljs-punctuation { color: #6e738d; }
+.dark .md-preview pre .hljs-property  { color: #91d7e3; }                   /* Sky */
+.dark .md-preview hr                  { border-top-color: #363a4f; }
+.dark .md-preview a                   { color: #c6a0f6; text-decoration-color: #3d3560; }
+.dark .md-preview a:hover             { color: #b7bdf8; text-decoration-color: #c6a0f6; }
+.dark .md-preview table               { border-color: #363a4f; }
+.dark .md-preview th                  { background-color: #1e2030; color: #b8c0e0; border-bottom-color: #363a4f; }
+.dark .md-preview td                  { color: #8087a2; border-bottom-color: #2a2d3e; }
+.dark .md-preview tr:hover td         { background-color: #2a2d3e; }
+.dark .md-preview img                 { border-color: #363a4f; }
+.dark .md-preview strong              { color: #cad3f5; }
+.dark .md-preview em                  { color: #8087a2; }
