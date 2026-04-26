@@ -39,7 +39,29 @@ SkillsHub 是一款跨平台桌面应用，帮助开发者统一管理分散在�
 
 ## 截图
 
-<!-- TODO: 添加应用截图 -->
+### 中央技能库 — 统一管理所有 Skills，支持平台筛选与 Markdown 预览
+
+![中央技能库](./public/screenshots/central-skills.png)
+
+### 深色主题
+
+![深色主题](./public/screenshots/theme-dark.png)
+
+### 技能市场 · SkillHub — 3 万+ 社区 Skills 一键安装
+
+![技能市场 SkillHub](./public/screenshots/market-skillhub.png)
+
+### 技能市场 · ClawHub
+
+![技能市场 ClawHub](./public/screenshots/market-clawhub.png)
+
+### 设置 · 平台管理 — 配置目标平台与安装路径
+
+![平台管理设置](./public/screenshots/settings-apps.png)
+
+### 扫描本地 Skills — 自动发现并导入到中央库
+
+![扫描本地技能](./public/screenshots/local-skills.png)
 
 ---
 
