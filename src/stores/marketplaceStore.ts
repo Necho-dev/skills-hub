@@ -151,7 +151,7 @@ async function processQueue(get: () => MarketplaceState, set: (fn: (s: Marketpla
   processingQueue = true;
 
   while (true) {
-    const { installQueue, sources } = get();
+    const { installQueue } = get();
     const installing = installQueue.filter((t) => t.status === 'installing');
     const pending = installQueue.filter((t) => t.status === 'pending');
 
