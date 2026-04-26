@@ -7,7 +7,7 @@ SkillsHub 是一款跨平台桌面应用，帮助开发者统一管理分散在�
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 ![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Build](https://github.com/YOUR_USERNAME/skills-hub/actions/workflows/release.yml/badge.svg)
+![Build](https://github.com/Necho-dev/skills-hub/actions/workflows/release.yml/badge.svg)
 
 ---
 
