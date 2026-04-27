@@ -397,3 +397,28 @@ export async function setAppSetting(key: string, value: string): Promise<void> {
     [key, value]
   );
 }
+
+// ── 迁移辅助：批量更新路径 ────────────────────────────────────────────────────
+
+export async function batchUpdateSkillPaths(
+  updates: { skillId: string; newPath: string }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  const d = await getDb();
+  for (const { skillId, newPath } of updates) {
+    await d.execute('UPDATE skills SET path = ? WHERE id = ?', [newPath, skillId]);
+  }
+}
+
+export async function batchUpdateInstallPaths(
+  updates: { skillId: string; platformId: string; newSymlinkPath: string }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  const d = await getDb();
+  for (const { skillId, platformId, newSymlinkPath } of updates) {
+    await d.execute(
+      'UPDATE installs SET symlink_path = ? WHERE skill_id = ? AND platform_id = ?',
+      [newSymlinkPath, skillId, platformId]
+    );
+  }
+}

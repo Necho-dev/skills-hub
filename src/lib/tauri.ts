@@ -12,32 +12,53 @@ import type {
   SourceSkillPage,
   SkillHubDetail,
   NativeSkill,
+  SkillFileNode,
 } from '@/types';
+import { useSettingsStore } from '@/stores/settingsStore';
+
+/** 从 settingsStore 读取中央库路径，供所有涉及中央库的命令注入 */
+function getCentralDir(): string {
+  return useSettingsStore.getState().centralDir;
+}
+
+export interface MigrateSkillResult {
+  skill_id: string;
+  new_path: string;
+  relinked_platforms: string[];
+  error?: string;
+}
+
+export interface MigrateReport {
+  moved: number;
+  relinked: number;
+  errors: string[];
+  results: MigrateSkillResult[];
+}
 
 // Skills
 export const scanCentralSkills = (
   platformPaths: { id: string; path: string }[]
 ): Promise<SkillWithInstalls[]> =>
-  invoke('scan_central_skills', { platformPaths });
+  invoke('scan_central_skills', { platformPaths, centralDir: getCentralDir() });
 
 export const getSkillMarkdown = (skillId: string): Promise<string> =>
-  invoke('get_skill_markdown', { skillId });
+  invoke('get_skill_markdown', { skillId, centralDir: getCentralDir() });
 
 export const patchSkillMeta = (
   skillId: string,
   meta: Record<string, string>,
 ): Promise<void> =>
-  invoke('patch_skill_meta', { skillId, meta });
+  invoke('patch_skill_meta', { skillId, meta, centralDir: getCentralDir() });
 
 export const packSkillToZip = (skillId: string): Promise<string> =>
-  invoke('pack_skill_to_zip', { skillId });
+  invoke('pack_skill_to_zip', { skillId, centralDir: getCentralDir() });
 
 export const unpackSkillToCentral = (
   skillId: string,
   zipB64: string,
   overwrite = false,
 ): Promise<import('@/types').Skill> =>
-  invoke('unpack_skill_to_central', { skillId, zipB64, overwrite });
+  invoke('unpack_skill_to_central', { skillId, zipB64, overwrite, centralDir: getCentralDir() });
 
 export const countPlatformSkills = (
   platformPaths: { id: string; path: string }[]
@@ -49,14 +70,14 @@ export const checkSymlinkConflict = (
   platformId: string,
   platformPath: string
 ): Promise<ConflictInfo | null> =>
-  invoke('check_symlink_conflict', { skillId, platformId, platformPath });
+  invoke('check_symlink_conflict', { skillId, platformId, platformPath, centralDir: getCentralDir() });
 
 export const installSkillToPlatform = (
   skillId: string,
   platformPath: string,
   overwrite = false
 ): Promise<InstallResult> =>
-  invoke('install_skill_to_platform', { skillId, platformPath, overwrite });
+  invoke('install_skill_to_platform', { skillId, platformPath, overwrite, centralDir: getCentralDir() });
 
 export const uninstallSkillFromPlatform = (
   skillId: string,
@@ -68,13 +89,13 @@ export const deleteSkill = (
   skillId: string,
   platformPaths: string[]
 ): Promise<boolean> =>
-  invoke('delete_skill', { skillId, platformPaths });
+  invoke('delete_skill', { skillId, platformPaths, centralDir: getCentralDir() });
 
 export const getInstalledPlatforms = (skillId: string): Promise<string[]> =>
-  invoke('get_installed_platforms', { skillId });
+  invoke('get_installed_platforms', { skillId, centralDir: getCentralDir() });
 
 export const initCentralDir = (): Promise<boolean> =>
-  invoke('init_central_dir');
+  invoke('init_central_dir', { centralDir: getCentralDir() });
 
 export const revealInFinder = (path: string): Promise<void> =>
   invoke('reveal_in_finder', { path });
@@ -84,7 +105,7 @@ export const importSkillToCentral = (
   skillIdOverride?: string,
   overwrite = false
 ): Promise<Skill> =>
-  invoke('import_skill_to_central', { sourcePath, skillIdOverride, overwrite });
+  invoke('import_skill_to_central', { sourcePath, skillIdOverride, overwrite, centralDir: getCentralDir() });
 
 // Projects
 export const scanProjectDirs = (paths: string[]): Promise<ProjectGroup[]> =>
@@ -102,7 +123,7 @@ export const previewGithubImport = (
   skillsRoot: string,
   githubToken?: string
 ): Promise<ImportPreviewItem[]> =>
-  invoke('preview_github_import', { repo, skillsRoot, githubToken });
+  invoke('preview_github_import', { repo, skillsRoot, githubToken, centralDir: getCentralDir() });
 
 export const executeGithubImport = (
   repo: string,
@@ -110,7 +131,7 @@ export const executeGithubImport = (
   items: ImportPreviewItem[],
   githubToken?: string
 ): Promise<{ skill_id: string; success: boolean; error?: string }[]> =>
-  invoke('execute_github_import', { repo, skillsRoot, items, githubToken });
+  invoke('execute_github_import', { repo, skillsRoot, items, githubToken, centralDir: getCentralDir() });
 
 export const onImportProgress = (
   cb: (progress: ImportProgress) => void
@@ -139,7 +160,7 @@ export const downloadSourceSkill = (
   slug: string,
   overwrite = false,
 ): Promise<string> =>
-  invoke('download_source_skill', { sourceType, baseUrl, slug, overwrite });
+  invoke('download_source_skill', { sourceType, baseUrl, slug, overwrite, centralDir: getCentralDir() });
 
 // Collections
 export const batchInstallCollection = (
@@ -147,7 +168,7 @@ export const batchInstallCollection = (
   platformPaths: string[],
   overwrite = false
 ): Promise<InstallResult[]> =>
-  invoke('batch_install_collection', { skillIds, platformPaths, overwrite });
+  invoke('batch_install_collection', { skillIds, platformPaths, overwrite, centralDir: getCentralDir() });
 
 export const getPlatformPaths = (): Promise<
   { id: string; name: string; path: string }[]
@@ -209,7 +230,7 @@ export function decodeSkillCol(raw: string): object {
 export const scanPlatformNativeSkills = (
   platformPaths: { id: string; path: string; name: string }[]
 ): Promise<NativeSkill[]> =>
-  invoke('scan_platform_native_skills', { platformPaths });
+  invoke('scan_platform_native_skills', { platformPaths, centralDir: getCentralDir() });
 
 /** 迁移模式：移动技能目录到中央库，原位置创建指向中央库的 symlink */
 export const moveSkillToCentral = (
@@ -218,7 +239,17 @@ export const moveSkillToCentral = (
   skillIdOverride?: string,
   overwrite = false,
 ): Promise<Skill> =>
-  invoke('move_skill_to_central', { sourcePath, platformSkillsPath, skillIdOverride, overwrite });
+  invoke('move_skill_to_central', { sourcePath, platformSkillsPath, skillIdOverride, overwrite, centralDir: getCentralDir() });
+
+// ── 文件树浏览 ────────────────────────────────────────────────────────────────
+
+/** 列举技能目录下所有文件的树形结构 */
+export const listSkillFiles = (skillPath: string): Promise<SkillFileNode[]> =>
+  invoke('list_skill_files', { skillPath });
+
+/** 读取技能目录内某个文件的文本内容（skill_root 用于安全校验） */
+export const readSkillFile = (skillRoot: string, path: string): Promise<string> =>
+  invoke('read_skill_file', { skillRoot, path });
 
 /** 链接模式：技能真相保留在项目目录，中央库创建指向它的 symlink */
 export const linkProjectSkillToCentral = (
@@ -226,7 +257,15 @@ export const linkProjectSkillToCentral = (
   skillIdOverride?: string,
   overwrite = false,
 ): Promise<Skill> =>
-  invoke('link_project_skill_to_central', { sourcePath, skillIdOverride, overwrite });
+  invoke('link_project_skill_to_central', { sourcePath, skillIdOverride, overwrite, centralDir: getCentralDir() });
+
+/** 迁移中央库目录：文件系统操作由 Rust 完成，DB 更新由前端负责 */
+export const migrateCentralDir = (
+  oldPath: string,
+  newPath: string,
+  platformPaths: string[],
+): Promise<MigrateReport> =>
+  invoke('migrate_central_dir', { oldPath, newPath, platformPaths });
 
 export async function exportCollectionToFile(
   defaultFilename: string,

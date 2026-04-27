@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
@@ -153,19 +152,21 @@ pub async fn preview_github_import(
     repo: String,
     skills_root: String,
     github_token: Option<String>,
+    central_dir: Option<String>,
 ) -> Result<Vec<ImportPreviewItem>, String> {
     let client = make_client(github_token)?;
+    let resolved_dir = crate::commands::skills::resolve_central_dir_pub(central_dir);
 
     // 尝试解析 tree/blob URL（如 https://github.com/owner/repo/tree/main/path）
     if let Some((owner, repo_name, branch, path)) = parse_github_tree_url(&repo) {
-        return preview_from_tree_url(&client, &owner, &repo_name, &branch, &path).await;
+        return preview_from_tree_url(&client, &owner, &repo_name, &branch, &path, &resolved_dir).await;
     }
 
     // 普通 owner/repo 格式，使用 skills_root 参数
     let (owner, repo_name) = parse_github_url(&repo)
         .ok_or_else(|| "Invalid GitHub repo URL or format.\nSupported formats:\n  - owner/repo\n  - https://github.com/owner/repo\n  - https://github.com/owner/repo/tree/branch/path".to_string())?;
 
-    preview_skills_root(&client, &owner, &repo_name, "HEAD", &skills_root).await
+    preview_skills_root(&client, &owner, &repo_name, "HEAD", &skills_root, &resolved_dir).await
 }
 
 async fn preview_from_tree_url(
@@ -174,6 +175,7 @@ async fn preview_from_tree_url(
     repo_name: &str,
     branch: &str,
     path: &str,
+    central_dir: &std::path::PathBuf,
 ) -> Result<Vec<ImportPreviewItem>, String> {
     let path_clean = path.trim_end_matches('/');
     let api_url = format!(
@@ -202,11 +204,6 @@ async fn preview_from_tree_url(
     let has_skill_md = items
         .iter()
         .any(|i| i.name.to_uppercase() == "SKILL.MD" && i.item_type == "file");
-
-    let central_dir = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".agent")
-        .join("skills");
 
     if has_skill_md {
         // SingleSkill 模式：该目录本身就是一个技能
@@ -237,7 +234,7 @@ async fn preview_from_tree_url(
         }])
     } else {
         // SkillRoot 模式：枚举子目录
-        preview_skills_root(client, owner, repo_name, branch, path_clean).await
+        preview_skills_root(client, owner, repo_name, branch, path_clean, central_dir).await
     }
 }
 
@@ -247,6 +244,7 @@ async fn preview_skills_root(
     repo_name: &str,
     branch: &str,
     skills_root: &str,
+    central_dir: &std::path::PathBuf,
 ) -> Result<Vec<ImportPreviewItem>, String> {
     let ref_param = if branch == "HEAD" {
         String::new()
@@ -275,11 +273,6 @@ async fn preview_skills_root(
         .json()
         .await
         .map_err(|e| format!("Failed to parse API response: {e}"))?;
-
-    let central_dir = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".agent")
-        .join("skills");
 
     let mut previews = Vec::new();
     for item in items {
@@ -319,6 +312,7 @@ pub async fn execute_github_import(
     _skills_root: String,
     items: Vec<serde_json::Value>,
     _github_token: Option<String>,
+    central_dir: Option<String>,
     app: AppHandle,
 ) -> Result<Vec<serde_json::Value>, String> {
     // 优先用 tree URL 解析（提取 owner/repo），回退到普通 URL 解析
@@ -394,10 +388,7 @@ pub async fn execute_github_import(
     checkout_cmd.args(&sparse_args);
     let _ = checkout_cmd.output();
 
-    let central_dir = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".agent")
-        .join("skills");
+    let central_dir = crate::commands::skills::resolve_central_dir_pub(central_dir);
 
     for (i, (skill_id, repo_path, overwrite)) in items_to_import.iter().enumerate() {
         let _ = app.emit("import_progress", ImportProgress {

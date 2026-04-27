@@ -28,11 +28,25 @@ fn expand_home(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
-fn central_skills_dir() -> PathBuf {
+fn default_central_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".agent")
+        .join(".skillshub")
         .join("skills")
+}
+
+pub fn resolve_central_dir_pub(central_dir: Option<String>) -> PathBuf {
+    resolve_central_dir(central_dir)
+}
+
+fn resolve_central_dir(central_dir: Option<String>) -> PathBuf {
+    central_dir
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            let s = s.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy().to_string());
+            expand_home(&s)
+        })
+        .unwrap_or_else(default_central_dir)
 }
 
 fn parse_frontmatter(content: &str) -> SkillFrontmatter {
@@ -90,8 +104,9 @@ pub fn patch_skill_source(skill_dir: &Path, source: &str) {
 pub async fn patch_skill_meta(
     skill_id: String,
     meta: std::collections::HashMap<String, String>,
+    central_dir: Option<String>,
 ) -> Result<(), String> {
-    let skill_md = central_skills_dir().join(&skill_id).join("SKILL.md");
+    let skill_md = resolve_central_dir(central_dir).join(&skill_id).join("SKILL.md");
     let content = fs::read_to_string(&skill_md)
         .map_err(|e| format!("Cannot read SKILL.md for '{}': {}", skill_id, e))?;
 
@@ -187,8 +202,9 @@ fn scan_skill_dir(skill_dir: &Path) -> Option<Skill> {
 #[tauri::command]
 pub async fn scan_central_skills(
     platform_paths: Vec<PlatformInfo>,
+    central_dir: Option<String>,
 ) -> Result<Vec<SkillWithInstalls>, String> {
-    let central_dir = central_skills_dir();
+    let central_dir = resolve_central_dir(central_dir);
     if !central_dir.exists() {
         fs::create_dir_all(&central_dir).map_err(|e| e.to_string())?;
         return Ok(vec![]);
@@ -278,8 +294,8 @@ pub async fn scan_central_skills(
 }
 
 #[tauri::command]
-pub async fn get_skill_markdown(skill_id: String) -> Result<String, String> {
-    let skill_path = central_skills_dir().join(&skill_id).join("SKILL.md");
+pub async fn get_skill_markdown(skill_id: String, central_dir: Option<String>) -> Result<String, String> {
+    let skill_path = resolve_central_dir(central_dir).join(&skill_id).join("SKILL.md");
     fs::read_to_string(&skill_path).map_err(|e| format!("Failed to read SKILL.md: {}", e))
 }
 
@@ -288,6 +304,7 @@ pub async fn check_symlink_conflict(
     skill_id: String,
     platform_id: String,
     platform_path: String,
+    central_dir: Option<String>,
 ) -> Result<Option<ConflictInfo>, String> {
     let target_path = expand_home(&platform_path).join(&skill_id);
     match fs::symlink_metadata(&target_path) {
@@ -295,7 +312,7 @@ pub async fn check_symlink_conflict(
         Ok(meta) => {
             if meta.file_type().is_symlink() {
                 let link_target = fs::read_link(&target_path).unwrap_or_default();
-                let expected = central_skills_dir().join(&skill_id);
+                let expected = resolve_central_dir(central_dir).join(&skill_id);
                 if link_target == expected {
                     return Ok(None);
                 }
@@ -322,11 +339,12 @@ pub async fn install_skill_to_platform(
     skill_id: String,
     platform_path: String,
     overwrite: bool,
+    central_dir: Option<String>,
     lock: State<'_, SymlinkLock>,
 ) -> Result<InstallResult, String> {
     let _guard = lock.0.lock().await;
 
-    let src = central_skills_dir().join(&skill_id);
+    let src = resolve_central_dir(central_dir).join(&skill_id);
     if !src.exists() {
         return Ok(InstallResult {
             skill_id: skill_id.clone(),
@@ -435,6 +453,7 @@ pub async fn uninstall_skill_from_platform(
 pub async fn delete_skill(
     skill_id: String,
     platform_paths: Vec<String>,
+    central_dir: Option<String>,
     lock: State<'_, SymlinkLock>,
 ) -> Result<bool, String> {
     let _guard = lock.0.lock().await;
@@ -448,7 +467,7 @@ pub async fn delete_skill(
         }
     }
 
-    let skill_dir = central_skills_dir().join(&skill_id);
+    let skill_dir = resolve_central_dir(central_dir).join(&skill_id);
     if skill_dir.exists() {
         fs::remove_dir_all(&skill_dir).map_err(|e| e.to_string())?;
     }
@@ -457,8 +476,8 @@ pub async fn delete_skill(
 }
 
 #[tauri::command]
-pub async fn get_installed_platforms(skill_id: String) -> Result<Vec<String>, String> {
-    let src = central_skills_dir().join(&skill_id);
+pub async fn get_installed_platforms(skill_id: String, central_dir: Option<String>) -> Result<Vec<String>, String> {
+    let src = resolve_central_dir(central_dir).join(&skill_id);
     let platform_paths = vec![
         dirs::home_dir().unwrap_or_default().join(".cursor/skills"),
         dirs::home_dir().unwrap_or_default().join(".cursor/skills-cursor"),
@@ -482,8 +501,8 @@ pub async fn get_installed_platforms(skill_id: String) -> Result<Vec<String>, St
 }
 
 #[tauri::command]
-pub async fn init_central_dir() -> Result<bool, String> {
-    let central = central_skills_dir();
+pub async fn init_central_dir(central_dir: Option<String>) -> Result<bool, String> {
+    let central = resolve_central_dir(central_dir);
     if !central.exists() {
         fs::create_dir_all(&central).map_err(|e| e.to_string())?;
     }
@@ -508,6 +527,7 @@ pub async fn import_skill_to_central(
     source_path: String,
     skill_id_override: Option<String>,
     overwrite: bool,
+    central_dir: Option<String>,
 ) -> Result<Skill, String> {
     let src = PathBuf::from(&source_path);
     if !src.join("SKILL.md").exists() {
@@ -519,7 +539,7 @@ pub async fn import_skill_to_central(
         .to_string_lossy()
         .to_string();
     let skill_id = skill_id_override.unwrap_or(dir_name);
-    let dst = central_skills_dir().join(&skill_id);
+    let dst = resolve_central_dir(central_dir).join(&skill_id);
 
     if dst.exists() {
         if !overwrite {
@@ -607,11 +627,11 @@ fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
 /// 将指定技能目录打包为 ZIP，返回 Base64 编码字节，用于导出技能集合。
 /// 每个技能打包为独立的 Base64 ZIP 字符串，前端统一组装到 .skillcol 文件中。
 #[tauri::command]
-pub async fn pack_skill_to_zip(skill_id: String) -> Result<String, String> {
+pub async fn pack_skill_to_zip(skill_id: String, central_dir: Option<String>) -> Result<String, String> {
     use std::io::Cursor;
     use zip::write::FileOptions;
 
-    let skill_dir = central_skills_dir().join(&skill_id);
+    let skill_dir = resolve_central_dir(central_dir).join(&skill_id);
     if !skill_dir.exists() {
         return Err(format!("Skill directory '{}' not found", skill_id));
     }
@@ -666,11 +686,12 @@ pub async fn unpack_skill_to_central(
     skill_id: String,
     zip_b64: String,
     overwrite: bool,
+    central_dir: Option<String>,
 ) -> Result<Skill, String> {
     use std::io::Cursor;
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-    let dst = central_skills_dir().join(&skill_id);
+    let dst = resolve_central_dir(central_dir).join(&skill_id);
     if dst.exists() {
         if !overwrite {
             // 已存在则直接返回，不报错（幂等）
@@ -716,8 +737,9 @@ pub async fn unpack_skill_to_central(
 #[tauri::command]
 pub async fn scan_platform_native_skills(
     platform_paths: Vec<PlatformInfoFull>,
+    central_dir: Option<String>,
 ) -> Result<Vec<NativeSkill>, String> {
-    let central_dir = central_skills_dir();
+    let central_dir = resolve_central_dir(central_dir);
     let mut results: Vec<NativeSkill> = Vec::new();
 
     for platform in &platform_paths {
@@ -797,6 +819,7 @@ pub async fn move_skill_to_central(
     platform_skills_path: String,
     skill_id_override: Option<String>,
     overwrite: bool,
+    central_dir: Option<String>,
     lock: State<'_, SymlinkLock>,
 ) -> Result<Skill, String> {
     let _guard = lock.0.lock().await;
@@ -821,7 +844,7 @@ pub async fn move_skill_to_central(
         .to_string_lossy()
         .to_string();
     let skill_id = skill_id_override.unwrap_or(dir_name);
-    let central_dir = central_skills_dir();
+    let central_dir = resolve_central_dir(central_dir);
     let dst = central_dir.join(&skill_id);
 
     if dst.exists() || fs::symlink_metadata(&dst).is_ok() {
@@ -889,6 +912,7 @@ pub async fn link_project_skill_to_central(
     source_path: String,
     skill_id_override: Option<String>,
     overwrite: bool,
+    central_dir: Option<String>,
     lock: State<'_, SymlinkLock>,
 ) -> Result<Skill, String> {
     let _guard = lock.0.lock().await;
@@ -913,7 +937,7 @@ pub async fn link_project_skill_to_central(
         .to_string_lossy()
         .to_string();
     let skill_id = skill_id_override.unwrap_or(dir_name);
-    let central_dir = central_skills_dir();
+    let central_dir = resolve_central_dir(central_dir);
     let central_link = central_dir.join(&skill_id);
 
     if fs::symlink_metadata(&central_link).is_ok() {
@@ -961,4 +985,302 @@ pub async fn link_project_skill_to_central(
     }
 
     scan_skill_dir(&central_link).ok_or_else(|| "链接后读取技能失败".to_string())
+}
+
+// ── 文件树浏览 ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SkillFileNode {
+    pub name: String,
+    /// 完整绝对路径
+    pub path: String,
+    /// 相对于技能根目录的路径（以 / 分隔，不含前导 /）
+    pub rel_path: String,
+    pub is_dir: bool,
+    pub children: Vec<SkillFileNode>,
+}
+
+const SKIP_DIRS: &[&str] = &[
+    ".git", "__pycache__", "node_modules", ".DS_Store", "target", ".idea", ".vscode",
+];
+
+fn build_file_tree(dir: &Path, root: &Path) -> Vec<SkillFileNode> {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return vec![],
+    };
+
+    let mut nodes: Vec<SkillFileNode> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let name = path.file_name()?.to_string_lossy().to_string();
+
+            // 跳过隐藏文件/目录（以 . 开头，但保留 .gitignore 等文本文件）
+            if name.starts_with('.') && path.is_dir() {
+                return None;
+            }
+
+            // 跳过已知无需展示的目录
+            if path.is_dir() && SKIP_DIRS.contains(&name.as_str()) {
+                return None;
+            }
+
+            let rel_path = path
+                .strip_prefix(root)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| name.clone());
+
+            let is_dir = path.is_dir();
+            let children = if is_dir {
+                build_file_tree(&path, root)
+            } else {
+                vec![]
+            };
+
+            Some(SkillFileNode {
+                name,
+                path: path.to_string_lossy().to_string(),
+                rel_path,
+                is_dir,
+                children,
+            })
+        })
+        .collect();
+
+    // 目录优先，再按名称字母序排序
+    nodes.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    nodes
+}
+
+/// 列举技能目录下所有文件的树形结构
+#[tauri::command]
+pub async fn list_skill_files(skill_path: String) -> Result<Vec<SkillFileNode>, String> {
+    let root = PathBuf::from(&skill_path);
+    if !root.exists() {
+        return Err(format!("技能目录不存在: {}", skill_path));
+    }
+    Ok(build_file_tree(&root, &root))
+}
+
+/// 读取技能目录内某个文件的文本内容
+/// 安全校验：path 必须在 skill_root 目录下（防路径穿越）
+#[tauri::command]
+pub async fn read_skill_file(skill_root: String, path: String) -> Result<String, String> {
+    let root = PathBuf::from(&skill_root)
+        .canonicalize()
+        .map_err(|e| format!("无效的技能根目录: {}", e))?;
+    let target = PathBuf::from(&path)
+        .canonicalize()
+        .map_err(|e| format!("无效的文件路径: {}", e))?;
+
+    if !target.starts_with(&root) {
+        return Err("路径穿越拒绝：文件路径超出技能目录范围".to_string());
+    }
+
+    fs::read_to_string(&target).map_err(|e| format!("读取文件失败: {}", e))
+}
+
+// ── 中央库迁移 ────────────────────────────────────────────────────────────────
+
+/// 单个技能的迁移结果，返回给前端用于更新 DB
+#[derive(Debug, serde::Serialize)]
+pub struct SkillMoveResult {
+    pub skill_id: String,
+    /// 迁移后技能在磁盘上的新绝对路径
+    pub new_path: String,
+    /// 成功重建 symlink 的平台路径列表
+    pub relinked_platforms: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// 迁移汇总报告
+#[derive(Debug, serde::Serialize)]
+pub struct MigrateReport {
+    pub moved: usize,
+    pub relinked: usize,
+    pub errors: Vec<String>,
+    /// 每个技能的详细结果，前端据此批量更新 DB
+    pub results: Vec<SkillMoveResult>,
+}
+
+/// 将中央技能库从 old_path 迁移到 new_path：
+/// 1. 逐技能 rename（跨设备时 copy + remove）
+/// 2. 在各平台目录重建指向新路径的 symlink
+/// 3. 返回 MigrateReport，由前端负责批量更新 DB
+/// platform_paths: DB 全量 platforms.skills_path（含禁用），用于找到所有 symlink
+#[tauri::command]
+pub async fn migrate_central_dir(
+    old_path: String,
+    new_path: String,
+    platform_paths: Vec<String>,
+    lock: State<'_, SymlinkLock>,
+) -> Result<MigrateReport, String> {
+    let _guard = lock.0.lock().await;
+
+    let old_dir = {
+        let s = old_path.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy().to_string());
+        expand_home(&s)
+    };
+    let new_dir = {
+        let s = new_path.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy().to_string());
+        expand_home(&s)
+    };
+
+    // 基本校验
+    if old_dir == new_dir {
+        return Err("新旧路径相同，无需迁移".to_string());
+    }
+    if !old_dir.exists() {
+        return Err(format!("原中央库目录不存在: {}", old_dir.display()));
+    }
+
+    // 创建新目录
+    fs::create_dir_all(&new_dir).map_err(|e| format!("无法创建新目录: {}", e))?;
+
+    let entries = fs::read_dir(&old_dir).map_err(|e| format!("无法读取原目录: {}", e))?;
+
+    let mut results: Vec<SkillMoveResult> = Vec::new();
+    let mut total_relinked = 0usize;
+    let mut global_errors: Vec<String> = Vec::new();
+
+    for entry in entries.flatten() {
+        let old_skill_dir = entry.path();
+        let name = old_skill_dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+
+        // 跳过隐藏文件/目录
+        if name.starts_with('.') {
+            continue;
+        }
+
+        let meta = match fs::symlink_metadata(&old_skill_dir) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_dir() && !meta.file_type().is_symlink() {
+            continue;
+        }
+
+        let new_skill_dir = new_dir.join(&name);
+        let skill_id = name.clone();
+
+        // 移动技能目录（rename，跨设备时 copy + remove）
+        let move_result = if meta.file_type().is_symlink() {
+            // symlink 直接重新创建指向原目标
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::symlink;
+                match fs::read_link(&old_skill_dir) {
+                    Ok(target) => symlink(&target, &new_skill_dir).map_err(|e| e.to_string()),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                Err("Windows 不支持 symlink".to_string())
+            }
+        } else {
+            match fs::rename(&old_skill_dir, &new_skill_dir) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    // 跨设备时尝试 copy + remove
+                    if e.raw_os_error() == Some(18) || e.to_string().contains("cross-device") {
+                        copy_dir_all(&old_skill_dir, &new_skill_dir)
+                            .and_then(|_| fs::remove_dir_all(&old_skill_dir))
+                            .map_err(|ce| ce.to_string())
+                    } else {
+                        Err(e.to_string())
+                    }
+                }
+            }
+        };
+
+        match move_result {
+            Err(e) => {
+                let msg = format!("技能 '{}' 迁移失败: {}", skill_id, e);
+                global_errors.push(msg.clone());
+                results.push(SkillMoveResult {
+                    skill_id,
+                    new_path: String::new(),
+                    relinked_platforms: vec![],
+                    error: Some(msg),
+                });
+                continue;
+            }
+            Ok(()) => {}
+        }
+
+        // 重建各平台 symlink
+        let mut relinked: Vec<String> = Vec::new();
+        let mut relink_errors: Vec<String> = Vec::new();
+
+        for platform_path in &platform_paths {
+            let platform_dir = {
+                let s = platform_path.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy().to_string());
+                expand_home(&s)
+            };
+            let dst = platform_dir.join(&skill_id);
+
+            // 检查该平台目录下是否有指向旧中央库路径的 symlink
+            let is_old_symlink = fs::symlink_metadata(&dst)
+                .ok()
+                .map(|m| m.file_type().is_symlink())
+                .unwrap_or(false)
+                && fs::read_link(&dst)
+                    .ok()
+                    .map(|t| t == old_skill_dir || t.starts_with(&old_dir))
+                    .unwrap_or(false);
+
+            if !is_old_symlink {
+                continue;
+            }
+
+            // 删除旧 symlink，重建指向新路径
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::symlink;
+                let remove_result = fs::remove_file(&dst);
+                let relink_result = remove_result.and_then(|_| symlink(&new_skill_dir, &dst));
+                match relink_result {
+                    Ok(_) => {
+                        relinked.push(platform_path.clone());
+                        total_relinked += 1;
+                    }
+                    Err(e) => {
+                        relink_errors.push(format!("平台 '{}' 重建 symlink 失败: {}", platform_path, e));
+                    }
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                relink_errors.push(format!("平台 '{}': Windows 不支持 symlink", platform_path));
+            }
+        }
+
+        global_errors.extend(relink_errors.iter().cloned());
+        let skill_error = if relink_errors.is_empty() { None } else {
+            Some(relink_errors.join("; "))
+        };
+
+        results.push(SkillMoveResult {
+            skill_id,
+            new_path: new_skill_dir.to_string_lossy().to_string(),
+            relinked_platforms: relinked,
+            error: skill_error,
+        });
+    }
+
+    let moved = results.iter().filter(|r| r.error.is_none() || !r.new_path.is_empty()).count();
+
+    Ok(MigrateReport {
+        moved,
+        relinked: total_relinked,
+        errors: global_errors,
+        results,
+    })
 }

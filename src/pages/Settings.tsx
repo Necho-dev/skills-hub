@@ -4,7 +4,7 @@ import {
   AlertTriangle, Cpu, GitBranch, Database, Info,
   ScanLine, CheckCircle2, XCircle, ExternalLink, Eye, EyeOff,
   Send, Loader2, Pencil, Check, GripVertical,
-  Archive, Link, ShoppingBag, Layers,
+  Archive, Link, ShoppingBag, Layers, Download, ArrowUpCircle,
 } from 'lucide-react';
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
@@ -22,15 +22,20 @@ import {
   getAutoDeployRules, upsertAutoDeployRule, deleteAutoDeployRule,
   getPlatforms, getPlatformGroups, updatePlatformGroup,
   getGroupOrders, upsertGroupOrder, batchUpdatePlatformSortOrder,
+  batchUpdateSkillPaths, batchUpdateInstallPaths,
 } from '@/lib/db';
 import type { AutoDeployRule } from '@/lib/db';
-import { initCentralDir, scanPlatformNativeSkills } from '@/lib/tauri';
+import { initCentralDir, scanPlatformNativeSkills, migrateCentralDir } from '@/lib/tauri';
+import type { MigrateReport } from '@/lib/tauri';
 import { ImportToCentralModal } from '@/components/skills/ImportToCentralModal';
 import { useCentralSkillsStore } from '@/stores/centralSkillsStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { NativeSkill, SourceConfig, SourceType, Platform } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { check, type Update } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import { toast } from 'sonner';
 import { Toggle } from '@/components/ui/Toggle';
 import { Select } from '@/components/ui/Select';
@@ -334,6 +339,87 @@ function LibraryTab({
   const [nativeScanSkills, setNativeScanSkills] = useState<NativeSkill[]>([]);
   const { load: reloadCentral } = useCentralSkillsStore();
 
+  // 中央目录配置
+  const { centralDir, centralDirDisplay, setCentralDir } = useSettingsStore();
+  const [pendingDir, setPendingDir] = useState<string | null>(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateReport, setMigrateReport] = useState<MigrateReport | null>(null);
+  // 有待确认的新路径时高亮迁移按钮
+  const hasPending = pendingDir !== null && pendingDir !== centralDirDisplay;
+
+  const handlePickDir = async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({ directory: true, multiple: false, title: '选择中央技能库目录' });
+    if (!selected || typeof selected !== 'string') return;
+    const picked = selected.trim();
+    if (picked === centralDir || picked === centralDirDisplay) return;
+    // 规范化为 display 格式供展示，存储时 setCentralDir 内部处理
+    setPendingDir(picked);
+  };
+
+  const handleConfirmDir = async () => {
+    if (!pendingDir) return;
+    try {
+      await setCentralDir(pendingDir);
+      setPendingDir(null);
+      toast.success('中央目录已更新，建议执行迁移以同步已分发的技能');
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const handleMigrate = async () => {
+    // 迁移目标：若有待确认的新路径先用它，否则用当前已保存路径（重新迁移）
+    const targetDir = pendingDir ?? centralDirDisplay;
+    if (!targetDir) return;
+    setMigrating(true);
+    setMigrateReport(null);
+    try {
+      // 从 DB 取全量平台路径（含禁用），确保不遗漏历史 symlink
+      const allPlatforms = await getAllPlatforms();
+      const platformPaths = allPlatforms.map((p) => p.skills_path);
+
+      const report = await migrateCentralDir(centralDir, targetDir, platformPaths);
+      setMigrateReport(report);
+
+      if (report.moved > 0 || report.relinked > 0) {
+        // 批量更新 DB 中的路径记录
+        const skillPathUpdates = report.results
+          .filter((r) => r.new_path)
+          .map((r) => ({ skillId: r.skill_id, newPath: r.new_path }));
+        await batchUpdateSkillPaths(skillPathUpdates);
+
+        // 更新 installs.symlink_path（根据 relinked_platforms 重建路径）
+        const installUpdates = report.results.flatMap((r) =>
+          r.relinked_platforms
+            .map((platformPath) => {
+              const platform = allPlatforms.find((p) => p.skills_path === platformPath);
+              if (!platform) return null;
+              return {
+                skillId: r.skill_id,
+                platformId: platform.id,
+                newSymlinkPath: `${platformPath}/${r.skill_id}`,
+              };
+            })
+            .filter(Boolean) as { skillId: string; platformId: string; newSymlinkPath: string }[]
+        );
+        await batchUpdateInstallPaths(installUpdates);
+
+        // 固化新路径到 settingsStore，清除待确认状态
+        await setCentralDir(targetDir);
+        setPendingDir(null);
+        await reloadCentral();
+        toast.success(`迁移完成：${report.moved} 个技能，${report.relinked} 个 Symlink 已重建`);
+      } else {
+        toast.info('未发现可迁移的技能');
+      }
+    } catch (e) {
+      toast.error(`迁移失败：${String(e)}`);
+    } finally {
+      setMigrating(false);
+    }
+  };
+
   const handleAdd = async () => {
     await onAddPath(newPath.trim(), newLabel.trim());
     setNewPath(''); setNewLabel('');
@@ -342,11 +428,20 @@ function LibraryTab({
   const handleNativeScan = async () => {
     setNativeScanLoading(true);
     try {
-      const natives = await scanPlatformNativeSkills(
-        enabledPlatforms.map((p) => ({ id: p.id, path: p.skills_path, name: p.name }))
-      );
+      const platformList = enabledPlatforms.map((p) => ({ id: p.id, path: p.skills_path, name: p.name }));
+
+      // 检测旧版中央技能库目录是否存在，存在则一并扫描
+      const LEGACY_PATH = '$HOME/.agent/skills';
+      try {
+        const legacyExists = await invoke<boolean>('check_path_exists', { path: LEGACY_PATH });
+        if (legacyExists && !platformList.some((p) => p.path === LEGACY_PATH)) {
+          platformList.push({ id: '__legacy_central__', path: LEGACY_PATH, name: '旧版中央技能库' });
+        }
+      } catch { /* 静默跳过，不阻塞主扫描 */ }
+
+      const natives = await scanPlatformNativeSkills(platformList);
       if (natives.length === 0) {
-        toast.success('暂无新技能，所有平台技能已纳入中央库管理');
+        toast.success('未发现新技能，已全部纳入中央技能库管理');
       } else {
         setNativeScanSkills(natives);
       }
@@ -362,15 +457,99 @@ function LibraryTab({
     <div className="flex flex-col gap-6">
       <section>
         <SectionTitle>中央技能库</SectionTitle>
-        <div className="border rounded-xl p-4 bg-white flex flex-col gap-3">
+        <div className="border rounded-xl p-4 bg-white dark:bg-gray-900 flex flex-col gap-3">
+          {/* 中央目录展示 + 更改 */}
           <div>
-            <p className="text-sm text-gray-600">中央目录</p>
-            <code className="text-xs text-gray-500 font-mono bg-gray-50 px-2 py-1 rounded mt-1 block">~/.agent/skills/</code>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1.5">中央目录</p>
+            {/* 当前路径 */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 flex items-center gap-2 bg-gray-50 dark:bg-gray-800 border dark:border-gray-700 rounded-lg px-3 py-1.5 min-w-0">
+                <code className="text-xs font-mono text-gray-700 dark:text-gray-300 truncate flex-1">{centralDirDisplay}</code>
+              </div>
+              <button
+                onClick={() => void handlePickDir()}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 border rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 transition-colors shrink-0"
+              >
+                选择新位置
+              </button>
+            </div>
+
+            {/* 待确认的新路径 */}
+            {pendingDir && (
+              <div className="mt-2 flex items-start gap-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] text-purple-500 dark:text-purple-400 mb-0.5">新路径（待确认）</p>
+                  <code className="text-xs font-mono text-purple-700 dark:text-purple-300 break-all">{pendingDir}</code>
+                </div>
+                <button
+                  onClick={() => void handleConfirmDir()}
+                  className="shrink-0 text-[11px] px-2.5 py-1 rounded-lg bg-purple-600 text-white hover:bg-purple-700 transition-colors mt-0.5"
+                >
+                  确认更新
+                </button>
+                <button
+                  onClick={() => setPendingDir(null)}
+                  className="shrink-0 text-[11px] px-2 py-1 rounded-lg text-purple-400 hover:text-purple-600 transition-colors mt-0.5"
+                >
+                  取消
+                </button>
+              </div>
+            )}
+
+            <p className="text-[11px] text-gray-400 mt-1.5 leading-relaxed">
+              更改中央技能库目录后，已分发的技能仍指向旧目录，建议执行迁移同步操作！
+            </p>
           </div>
-          <button onClick={onInitCentral} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-800 border rounded-lg px-3 py-2 self-start hover:bg-gray-50">
-            <RefreshCw size={13} />
-            初始化/检查目录
-          </button>
+
+          {/* 操作按钮行 */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={onInitCentral}
+              className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 border rounded-lg px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <RefreshCw size={11} />
+              初始化/检查目录
+            </button>
+            <button
+              onClick={() => void handleMigrate()}
+              disabled={migrating || !hasPending}
+              className={cn(
+                'flex items-center gap-1.5 text-xs border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                hasPending
+                  ? 'bg-purple-600 text-white border-purple-600 hover:bg-purple-700'
+                  : 'text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700'
+              )}
+            >
+              {migrating ? <Loader2 size={11} className="animate-spin" /> : <Archive size={11} />}
+              迁移到新路径
+            </button>
+          </div>
+
+          {/* 迁移结果 */}
+          {migrateReport && (
+            <div className={cn(
+              'rounded-lg p-3 text-xs',
+              migrateReport.errors.length > 0
+                ? 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
+                : 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+            )}>
+              <p className={cn(
+                'font-medium mb-1',
+                migrateReport.errors.length > 0 ? 'text-orange-700 dark:text-orange-400' : 'text-green-700 dark:text-green-400'
+              )}>
+                已迁移 {migrateReport.moved} 个技能，重建 {migrateReport.relinked} 个 Symlink
+                {migrateReport.errors.length > 0 && `，${migrateReport.errors.length} 个错误`}
+              </p>
+              {migrateReport.errors.length > 0 && (
+                <ul className="text-orange-600 dark:text-orange-400 space-y-0.5 max-h-24 overflow-y-auto">
+                  {migrateReport.errors.map((e, i) => (
+                    <li key={i} className="truncate">· {e}</li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-gray-400 mt-1.5">若迁移中断，可重新扫描中央库进行修复</p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -1241,7 +1420,7 @@ const FEATURES: {
   {
     icon: <Archive size={18} className="text-purple-500" />,
     title: '中央技能库',
-    desc: '类「中央厨房」的设计理念，实现本地技能的全局唯一管理存储（~/.agent/skills/），无需复制粘贴，零拷贝自由流通',
+    desc: '类「中央厨房」的设计理念，实现本地技能的全局唯一管理存储（~/.skillshub/skills/），无需复制粘贴，零拷贝自由流通',
   },
   {
     icon: <Link size={18} className="text-blue-500" />,
@@ -1282,8 +1461,22 @@ const LINKS = [
   },
 ];
 
+type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'upToDate'
+  | 'updateAvailable'
+  | 'downloading'
+  | 'installing'
+  | 'error';
+
 function AboutTab() {
   const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle');
+  const [updateInfo, setUpdateInfo] = useState<Update | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadTotal, setDownloadTotal] = useState(0);
+  const [updateError, setUpdateError] = useState('');
 
   useEffect(() => {
     getVersion().then(setVersion).catch(() => setVersion('0.1.0'));
@@ -1292,6 +1485,46 @@ function AboutTab() {
   const handleLink = useCallback((url: string) => {
     openUrl(url).catch(console.error);
   }, []);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateStatus('checking');
+    setUpdateError('');
+    setUpdateInfo(null);
+    try {
+      const update = await check();
+      if (update?.available) {
+        setUpdateInfo(update);
+        setUpdateStatus('updateAvailable');
+      } else {
+        setUpdateStatus('upToDate');
+        setTimeout(() => setUpdateStatus('idle'), 3000);
+      }
+    } catch (e) {
+      setUpdateError(String(e));
+      setUpdateStatus('error');
+    }
+  }, []);
+
+  const handleDownloadAndInstall = useCallback(async () => {
+    if (!updateInfo) return;
+    setUpdateStatus('downloading');
+    setDownloadProgress(0);
+    setDownloadTotal(0);
+    try {
+      await updateInfo.downloadAndInstall((event) => {
+        if (event.event === 'Started') {
+          setDownloadTotal(event.data.contentLength ?? 0);
+        } else if (event.event === 'Progress') {
+          setDownloadProgress((prev) => prev + event.data.chunkLength);
+        }
+      });
+      setUpdateStatus('installing');
+      await relaunch();
+    } catch (e) {
+      setUpdateError(String(e));
+      setUpdateStatus('error');
+    }
+  }, [updateInfo]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -1414,10 +1647,104 @@ function AboutTab() {
         </div>
       </section>
 
+      {/* Check for updates */}
+      <section>
+        <SectionTitle>版本更新</SectionTitle>
+        <div className="border rounded-xl bg-white p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ArrowUpCircle size={15} className="text-purple-500" />
+              <span className="text-xs font-medium text-gray-700">
+                {updateStatus === 'idle' && '检查是否有新版本可用'}
+                {updateStatus === 'checking' && '正在检查更新...'}
+                {updateStatus === 'upToDate' && '已是最新版本'}
+                {updateStatus === 'updateAvailable' && `发现新版本 v${updateInfo?.version}`}
+                {updateStatus === 'downloading' && '正在下载更新...'}
+                {updateStatus === 'installing' && '安装中，即将重启...'}
+                {updateStatus === 'error' && '检查更新失败'}
+              </span>
+            </div>
+
+            {(updateStatus === 'idle' || updateStatus === 'upToDate' || updateStatus === 'error') && (
+              <button
+                onClick={handleCheckUpdate}
+                className="flex items-center gap-1.5 text-xs font-medium text-purple-600 hover:text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <RefreshCw size={12} />
+                检查更新
+              </button>
+            )}
+
+            {updateStatus === 'checking' && (
+              <Loader2 size={14} className="text-purple-400 animate-spin" />
+            )}
+
+            {updateStatus === 'upToDate' && (
+              <CheckCircle2 size={14} className="text-emerald-500" />
+            )}
+
+            {updateStatus === 'updateAvailable' && (
+              <button
+                onClick={handleDownloadAndInstall}
+                className="flex items-center gap-1.5 text-xs font-medium text-white bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Download size={12} />
+                立即更新
+              </button>
+            )}
+          </div>
+
+          {updateStatus === 'updateAvailable' && updateInfo?.body && (
+            <div className="bg-gray-50 rounded-lg p-3 text-[11px] text-gray-600 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+              {updateInfo.body}
+            </div>
+          )}
+
+          {(updateStatus === 'downloading' || updateStatus === 'installing') && (
+            <div className="flex flex-col gap-1.5">
+              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-purple-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: downloadTotal > 0
+                      ? `${Math.min(100, Math.round((downloadProgress / downloadTotal) * 100))}%`
+                      : updateStatus === 'installing' ? '100%' : '0%',
+                  }}
+                />
+              </div>
+              <p className="text-[11px] text-gray-400 text-right">
+                {updateStatus === 'installing'
+                  ? '安装中...'
+                  : downloadTotal > 0
+                    ? `${(downloadProgress / 1024 / 1024).toFixed(1)} / ${(downloadTotal / 1024 / 1024).toFixed(1)} MB`
+                    : '准备中...'}
+              </p>
+            </div>
+          )}
+
+          {updateStatus === 'error' && (
+            <p className="text-[11px] text-red-500 bg-red-50 rounded-lg px-3 py-2 break-all">
+              {updateError}
+            </p>
+          )}
+        </div>
+      </section>
+
       {/* Copyright */}
-      <p className="text-center text-[11px] text-gray-300 pb-2">
-        © 2025–{new Date().getFullYear()} iFlyTek · SkillsHub · MIT License
-      </p>
+      <div className="flex items-center justify-center gap-2 pb-2">
+        <p className="text-[11px] text-gray-300">
+          © 2025 - {new Date().getFullYear()} · SkillsHub
+        </p>
+        <button
+          onClick={() => openUrl('https://github.com/Necho-dev/skills-hub').catch(console.error)}
+          className="text-gray-300 hover:text-gray-500 transition-colors"
+          title="GitHub 仓库"
+        >
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+            <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

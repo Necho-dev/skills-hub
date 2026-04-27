@@ -7,6 +7,7 @@ import {
   setMarketplaceCache,
   upsertSkillMeta,
 } from '@/lib/db';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 const CACHE_TTL_SECS = 1800; // 30 分钟
 const MAX_CONCURRENT = 3;    // 最大并发安装数
@@ -112,7 +113,8 @@ async function applySkillMeta(slug: string, item: SourceSkillItem, sourceType: s
 
   // 2. 写入 DB（供 UI 直接查询，无需等下次扫描）
   const now = Math.floor(Date.now() / 1000);
-  const centralPath = `$HOME/.agent/skills/${slug}`;
+  const centralDir = useSettingsStore.getState().centralDir;
+  const centralPath = `${centralDir}/${slug}`;
   try {
     await upsertSkillMeta({
       id: slug,

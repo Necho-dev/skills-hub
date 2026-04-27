@@ -25,6 +25,25 @@ type IconEntry    = ImgEntry | SvgEntry | InitialEntry;
 
 // ── Inline SVG components (must accept a `size` prop) ────────────────────────
 
+function LegacyCentralFolderIcon({ size }: { size: number }) {
+  const fontSize = Math.max(8, Math.round(size * 0.55));
+  return (
+    <span
+      className="inline-flex select-none items-center justify-center rounded-[2.5px] bg-slate-400 text-white dark:bg-zinc-500"
+      style={{
+        width: size,
+        height: size,
+        fontSize,
+        fontWeight: 700,
+        lineHeight: 1,
+        fontFamily: 'system-ui, "PingFang SC", "Microsoft YaHei", sans-serif',
+      }}
+    >
+      旧
+    </span>
+  );
+}
+
 function CodeBuddySvg({ size }: { size: number }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const clipId = `cb-${uid}`;
@@ -71,6 +90,7 @@ const ICON_REGISTRY: Record<string, IconEntry> = {
   skillsmp:          { type: 'img', src: '/platform-icons/skillsmp.svg',           alt: 'Skillsmp' },
   github:            { type: 'img', src: '/platform-icons/github.svg',             alt: 'GitHub'   },
   'skillhub-iflytek': { type: 'img', src: '/platform-icons/skillhub-iflytek.svg', alt: 'iflytek/skillhub' },
+  legacy_central: { type: 'svg', component: LegacyCentralFolderIcon },
 };
 
 // 平台 ID → 图标 key 映射（当平台 ID 与图标 key 不同时使用）
@@ -80,6 +100,7 @@ const PLATFORM_ICON_MAP: Record<string, string> = {
   'gemini-cli':     'gemini',
   'trae-cn':        'trae',
   'cursor-cursor':  'cursor',
+  '__legacy_central__': 'legacy_central',
 };
 
 function getEntry(key: string | undefined): IconEntry {

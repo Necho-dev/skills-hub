@@ -5,7 +5,7 @@
 SkillsHub 是一款跨平台桌面应用，帮助开发者统一管理分散在各 AI 编辑器和助手中的 Agent Skills（提示词、工具规则等配置文件），实现本地中央库存储、一键分发到各平台、收藏夹管理，以及从 Marketplace 在线获取社区 Skills。
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Build](https://github.com/Necho-dev/skills-hub/actions/workflows/release.yml/badge.svg)
 
@@ -69,12 +69,11 @@ SkillsHub 是一款跨平台桌面应用，帮助开发者统一管理分散在�
 
 ### 下载预构建包（推荐）
 
-前往 [Releases](https://github.com/YOUR_USERNAME/skills-hub/releases) 页面下载对应平台的安装包：
+前往 [Releases](https://github.com/Necho-dev/skills-hub/releases) 页面下载对应平台的安装包：
 
 | 平台 | 文件 |
 |------|------|
 | macOS (Apple Silicon) | `SkillsHub_x.x.x_aarch64.dmg` |
-| macOS (Intel) | `SkillsHub_x.x.x_x64.dmg` |
 | Windows | `SkillsHub_x.x.x_x64-setup.exe` 或 `.msi` |
 | Linux | `SkillsHub_x.x.x_amd64.AppImage` 或 `.deb` |
 
@@ -86,6 +85,10 @@ SkillsHub 是一款跨平台桌面应用，帮助开发者统一管理分散在�
 # 移除隔离属性后重新打开
 xattr -cr /Applications/SkillsHub.app
 ```
+
+### 在线更新
+
+v0.1.1 起支持应用内在线更新。打开应用后进入 **设置 → 关于 → 版本更新**，点击「检查更新」即可查看并下载最新版本，无需手动重新安装。
 
 ---
 
@@ -116,7 +119,7 @@ sudo apt-get install -y \
 
 ```bash
 # 克隆仓库
-git clone https://github.com/YOUR_USERNAME/skills-hub.git
+git clone https://github.com/Necho-dev/skills-hub.git
 cd skills-hub
 
 # 安装前端依赖
@@ -186,7 +189,7 @@ skills-hub/
 本项目使用 GitHub Actions 实现自动化：
 
 - **`ci.yml`** — 每次向 `main` 分支 push 或 PR 时，自动执行 TypeScript 类型检查和前端构建
-- **`release.yml`** — 推送版本 tag（如 `v1.0.0`）时，自动并行构建四个平台的安装包并发布到 GitHub Releases
+- **`release.yml`** — 推送版本 tag（如 `v1.0.0`）时，自动并行构建三个平台（macOS Apple Silicon、Windows、Linux）的安装包并发布到 GitHub Releases
 
 ### 发布新版本
 

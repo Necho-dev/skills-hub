@@ -325,7 +325,7 @@ export function CentralLibrary() {
                         'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border transition-colors',
                         active
                           ? 'bg-purple-600 text-white border-purple-600'
-                          : 'text-gray-500 border-gray-200 hover:border-purple-300 hover:text-purple-600 bg-white'
+                          : 'text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-600 hover:border-purple-300 hover:text-purple-600 bg-white dark:bg-gray-800'
                       )}
                     >
                       {cfg.icon}
@@ -333,7 +333,7 @@ export function CentralLibrary() {
                       {cnt > 0 && (
                         <span className={cn(
                           'text-[9px] rounded-full px-1 font-medium',
-                          active ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                          active ? 'bg-white/20 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
                         )}>
                           {cnt}
                         </span>
@@ -456,7 +456,7 @@ export function CentralLibrary() {
             <div className="flex flex-col items-center justify-center h-40 text-gray-400">
               <p className="text-sm">{searchQuery || filterPlatformId ? '无匹配技能' : '中央技能库为空'}</p>
               {!searchQuery && !filterPlatformId && (
-                <p className="text-xs mt-1">将 skills 安装到 ~/.agent/skills/ 后重新扫描</p>
+                <p className="text-xs mt-1">将 skills 安装到 ~/.skillshub/skills/ 后重新扫描</p>
               )}
             </div>
           )}

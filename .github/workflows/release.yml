@@ -46,10 +46,6 @@ jobs:
             arch: aarch64
             target: aarch64-apple-darwin
             label: macOS (Apple Silicon)
-          - os: macos-13
-            arch: x86_64
-            target: x86_64-apple-darwin
-            label: macOS (Intel)
           - os: windows-latest
             arch: x86_64
             target: x86_64-pc-windows-msvc
@@ -101,6 +97,8 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release-id }}
           args: --target ${{ matrix.target }}

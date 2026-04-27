@@ -1,12 +1,15 @@
-import { FolderOpen, Trash2, X, AlertTriangle, CheckCircle2, PlusCircle, Loader2, Send, Ban } from 'lucide-react';
-import type { Skill } from '@/types';
+import { FolderOpen, Trash2, X, AlertTriangle, CheckCircle2, PlusCircle, Loader2, Send, Ban, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Skill, SkillFileNode } from '@/types';
 import { usePlatformStore } from '@/stores/platformStore';
 import { useCentralSkillsStore } from '@/stores/centralSkillsStore';
 import { MarkdownPreview } from './MarkdownPreview';
+import { SkillFileTree } from './SkillFileTree';
+import { FrontmatterPanel } from './FrontmatterPanel';
+import { CodeFilePreview } from './CodeFilePreview';
 import { PlatformIcon } from '@/lib/platformIcons';
-import { revealInFinder } from '@/lib/tauri';
+import { revealInFinder, listSkillFiles, readSkillFile } from '@/lib/tauri';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { SOURCE_CONFIG } from '@/lib/skillSource';
 
@@ -30,7 +33,6 @@ function DeleteConfirmModal({ skillName, installedPlatformNames, deleting, onCon
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-xl w-[360px] p-5 flex flex-col gap-4">
-        {/* 标题 */}
         <div className="flex items-start gap-3">
           <div className="mt-0.5 shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
             <AlertTriangle size={15} className="text-red-500" />
@@ -43,7 +45,6 @@ function DeleteConfirmModal({ skillName, installedPlatformNames, deleting, onCon
           </div>
         </div>
 
-        {/* 符号链接警告 */}
         {installedPlatformNames.length > 0 && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 flex flex-col gap-1.5">
             <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700">
@@ -62,12 +63,10 @@ function DeleteConfirmModal({ skillName, installedPlatformNames, deleting, onCon
           </div>
         )}
 
-        {/* 不可恢复提示 */}
         <p className="text-xs text-gray-400">
-          该操作将从 <code className="bg-gray-100 px-1 rounded font-mono">~/.agent/skills/</code> 目录中<span className="text-red-500 font-medium">删除技能文件且无法恢复</span>，请谨慎操作。
+          该操作将从 <code className="bg-gray-100 px-1 rounded font-mono">~/.skillshub/skills/</code> 目录中<span className="text-red-500 font-medium">删除技能文件且无法恢复</span>，请谨慎操作。
         </p>
 
-        {/* 按钮 */}
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
@@ -92,6 +91,32 @@ function DeleteConfirmModal({ skillName, installedPlatformNames, deleting, onCon
   );
 }
 
+/** 根据文件扩展名判断是否为代码文件（非 Markdown） */
+function getCodeLanguage(filename: string): string | null {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  const langMap: Record<string, string> = {
+    ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx',
+    json: 'json', py: 'python', sh: 'bash', zsh: 'bash',
+    rs: 'rust', toml: 'toml', yaml: 'yaml', yml: 'yaml',
+    css: 'css', html: 'html', xml: 'xml', sql: 'sql',
+    go: 'go', rb: 'ruby', php: 'php', java: 'java', kt: 'kotlin',
+    txt: 'text',
+  };
+  if (!ext) return null;
+  return langMap[ext] ?? null;
+}
+
+const BINARY_EXTENSIONS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico',
+  'zip', 'tar', 'gz', 'dmg', 'exe', 'bin', 'wasm',
+  'pdf', 'ttf', 'otf', 'woff', 'woff2',
+]);
+
+function isBinaryFile(filename: string): boolean {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  return ext ? BINARY_EXTENSIONS.has(ext) : false;
+}
+
 
 export function SkillDetailPanel({
   skill,
@@ -106,6 +131,76 @@ export function SkillDetailPanel({
   const [togglingAll, setTogglingAll] = useState<'install' | 'uninstall' | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // 文件树相关状态
+  const [fileNodes, setFileNodes] = useState<SkillFileNode[]>([]);
+  const [totalFiles, setTotalFiles] = useState(0);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  // 侧边栏始终渲染，默认折叠；只通过 Tailwind 类切换宽度
+  const [fileTreeCollapsed, setFileTreeCollapsed] = useState(true);
+  // 是否显示文件树（有多于1个文件时才显示）
+  // 不在 effect 开头重置，等新数据到来后原子性更新，避免切换时闪动
+  const [showFileTree, setShowFileTree] = useState(false);
+
+  // 加载文件树
+  useEffect(() => {
+    setSelectedFilePath(null);
+    setFileContent(null);
+    let cancelled = false;
+    listSkillFiles(skill.path)
+      .then((nodes) => {
+        if (cancelled) return;
+        const countFiles = (ns: SkillFileNode[]): number =>
+          ns.reduce((s, n) => s + (n.is_dir ? countFiles(n.children) : 1), 0);
+        // 原子性更新，一次 setState 批次
+        setFileNodes(nodes);
+        setTotalFiles(countFiles(nodes));
+        setShowFileTree(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setFileNodes([]);
+        setTotalFiles(0);
+        setShowFileTree(false);
+      });
+    return () => { cancelled = true; };
+  }, [skill.path]);
+
+  const handleSelectFile = async (node: SkillFileNode) => {
+    if (node.is_dir) return;
+    if (selectedFilePath === node.path) return;
+
+    setSelectedFilePath(node.path);
+    setFileContent(null);
+
+    if (isBinaryFile(node.name)) {
+      setFileContent(null);
+      return;
+    }
+
+    setFileLoading(true);
+    try {
+      const content = await readSkillFile(skill.path, node.path);
+      setFileContent(content);
+    } catch {
+      setFileContent(null);
+    } finally {
+      setFileLoading(false);
+    }
+  };
+
+  // 当前要展示的内容：优先选中文件，否则 fallback 到 SKILL.md（markdown prop）
+  const activeFilename = selectedFilePath
+    ? selectedFilePath.split('/').pop() ?? ''
+    : 'SKILL.md';
+  const isMarkdownFile = activeFilename.toLowerCase().endsWith('.md');
+  const isBinary = selectedFilePath ? isBinaryFile(activeFilename) : false;
+  const codeLang = !isMarkdownFile ? getCodeLanguage(activeFilename) : null;
+
+  const displayContent = selectedFilePath ? fileContent : markdown;
+  const displayLoading = selectedFilePath ? fileLoading : markdownLoading;
 
   const handleTogglePlatform = async (platformId: string, wantInstall: boolean) => {
     const platform = platforms.find((p) => p.id === platformId);
@@ -186,7 +281,7 @@ export function SkillDetailPanel({
       )}
 
       <div className="flex flex-col h-full">
-        {/* Panel header：标题行 + 操作按钮 */}
+        {/* Panel header */}
         <div className="px-4 pt-3 pb-0 border-b">
           {/* 第一行：标题 + 操作按钮 */}
           <div className="flex items-center justify-between gap-2">
@@ -241,31 +336,6 @@ export function SkillDetailPanel({
             <p className="text-[11px] text-gray-500 mt-1 leading-snug line-clamp-2">{skill.description}</p>
           )}
 
-          {/* 作者 / 来源链接 */}
-          {(skill.author || skill.source_url) && (
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {skill.author && (
-                <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>
-                  {skill.author}
-                </span>
-              )}
-              {skill.source_url && (
-                <a
-                  href={skill.source_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => { e.preventDefault(); void import('@/lib/tauri').then(({ revealInFinder: _ }) => { window.open(skill.source_url, '_blank'); }); }}
-                  className="text-[10px] text-purple-500 hover:text-purple-700 flex items-center gap-0.5 truncate max-w-[200px]"
-                  title={skill.source_url}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                  来源链接
-                </a>
-              )}
-            </div>
-          )}
-
           {/* 路径 */}
           <p className="text-[10px] text-gray-400 mt-1 font-mono truncate">{skill.path}</p>
 
@@ -280,9 +350,8 @@ export function SkillDetailPanel({
               const notInstalledCount = enabled.length - installedCount;
               return (
                 <div>
-                  {/* 操作栏 */}
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] text-gray-500 font-medium">分发到平台</span>
+                    <span className="text-[11px] text-gray-500 font-medium">快速分发到平台</span>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleToggleAll('install')}
@@ -308,7 +377,6 @@ export function SkillDetailPanel({
                       </button>
                     </div>
                   </div>
-                  {/* 胶囊网格 */}
                   <div className="flex flex-wrap gap-1.5">
                     {enabled.map((platform) => {
                       const isInstalled = installedPlatformIds.includes(platform.id);
@@ -342,25 +410,97 @@ export function SkillDetailPanel({
               );
             })()}
           </div>
+
+          {/* Frontmatter 元数据展开面板（始终显示，切换文件时不消失） */}
+          <FrontmatterPanel markdown={markdown} />
         </div>
 
-        {/* Markdown content */}
-        <div className="flex-1 overflow-y-auto">
-          {markdownLoading ? (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-              加载中...
-            </div>
-          ) : markdown ? (
-            <div className="px-4 py-4">
-              <MarkdownPreview content={markdown} />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
-              无 SKILL.md 内容
-            </div>
-          )}
-        </div>
+        {/* 主体区：文件树侧边栏 + 内容预览 */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/*
+            文件树侧边栏：
+            - relative + z-10：让圆形悬浮按钮不被父级 overflow-hidden 裁剪
+            - 折叠/展开只切换 w-3 / w-44，transition-all duration-200 驱动过渡
+            - showFileTree=false 时 w-0 隐藏，不重置避免切换技能时闪动
+          */}
+          {/* 文件树侧边栏：折叠时 w-5 显示竖排文字，展开时 w-44 */}
+          <div className={cn(
+            'relative shrink-0 border-r flex flex-col transition-all duration-200 z-10 overflow-visible',
+            !showFileTree
+              ? 'w-0 opacity-0 pointer-events-none border-r-0'
+              : fileTreeCollapsed ? 'w-5' : 'w-44'
+          )}>
+            {/* 圆形展开/收起按钮，始终可见 */}
+            {showFileTree && (
+              <button
+                onClick={() => setFileTreeCollapsed((v) => !v)}
+                title={fileTreeCollapsed ? '展开文件树' : '折叠文件树'}
+                className="absolute -right-3.5 top-3 z-20 rounded-full border bg-white dark:bg-gray-800 dark:border-gray-700 p-1 text-gray-500 dark:text-gray-400 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                {fileTreeCollapsed
+                  ? <ChevronRight size={13} />
+                  : <ChevronLeft size={13} />
+                }
+              </button>
+            )}
 
+            {/* 折叠态：竖排文件数量文字 */}
+            {showFileTree && (
+              <div className={cn(
+                'absolute inset-0 flex flex-col items-center justify-start pt-10 transition-opacity duration-200',
+                fileTreeCollapsed ? 'opacity-100 pointer-events-none' : 'opacity-0 pointer-events-none'
+              )}>
+                <span
+                  className="text-[9px] text-gray-400 font-medium select-none"
+                  style={{ writingMode: 'vertical-rl', letterSpacing: '0.08em' }}
+                >
+                  共 {totalFiles} 项文件
+                </span>
+              </div>
+            )}
+
+            {/* 展开态：完整文件树 */}
+            <SkillFileTree
+              nodes={fileNodes}
+              selectedPath={selectedFilePath}
+              onSelect={handleSelectFile}
+              collapsed={fileTreeCollapsed}
+            />
+          </div>
+
+          {/* 右侧内容预览 */}
+          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+            {displayLoading ? (
+              <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+                加载中...
+              </div>
+            ) : isBinary ? (
+              <div className="flex flex-col items-center justify-center h-32 text-gray-400">
+                <p className="text-sm">不支持预览该文件类型</p>
+                <p className="text-xs mt-1 font-mono text-gray-300">{activeFilename}</p>
+              </div>
+            ) : displayContent ? (
+              isMarkdownFile ? (
+                <div className="flex-1 overflow-y-auto px-4 py-4">
+                  <MarkdownPreview content={displayContent} />
+                </div>
+              ) : (
+                // CodeFilePreview 需要确定高度容器，flex-1 让它撑满剩余空间
+                <div className="flex-1 overflow-hidden">
+                  <CodeFilePreview
+                    filename={activeFilename}
+                    content={displayContent}
+                    language={codeLang ?? undefined}
+                  />
+                </div>
+              )
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-400 text-sm">
+                {selectedFilePath ? '无法读取文件内容' : '无 SKILL.md 内容'}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </>
   );

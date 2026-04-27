@@ -53,16 +53,18 @@ pub async fn fetch_source_skills(
     }
 }
 
-/// 下载指定技能 ZIP 并解压到 ~/.agent/skills/
+/// 下载指定技能 ZIP 并解压到中央技能库目录（由前端传入 central_dir）
 /// source_type: "skillhub" | "clawhub"
 /// slug: 技能的 slug
 /// overwrite: 是否覆盖已存在的技能
+/// central_dir: 中央技能库路径（$HOME/... 格式，由 settingsStore 提供）
 #[tauri::command]
 pub async fn download_source_skill(
     source_type: String,
     base_url: String,
     slug: String,
     overwrite: bool,
+    central_dir: Option<String>,
 ) -> Result<String, String> {
     let client = make_client()?;
 
@@ -79,14 +81,11 @@ pub async fn download_source_skill(
         }
     };
 
-    let result = download_and_install_zip(&client, &download_url, &slug, overwrite).await?;
+    let resolved_dir = crate::commands::skills::resolve_central_dir_pub(central_dir);
+    let result = download_and_install_zip(&client, &download_url, &slug, overwrite, &resolved_dir).await?;
 
     // ZIP 解压完成后，把正确的 source 写入 SKILL.md frontmatter
-    let central_dir = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
-        .join(".agent")
-        .join("skills");
-    let skill_dir = central_dir.join(&slug);
+    let skill_dir = resolved_dir.join(&slug);
     let source_str = source_label_for(&source_type);
     crate::commands::skills::patch_skill_source(&skill_dir, source_str);
 
@@ -814,12 +813,8 @@ async fn download_and_install_zip(
     url: &str,
     slug: &str,
     overwrite: bool,
+    central_dir: &PathBuf,
 ) -> Result<String, String> {
-    let central_dir = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("/tmp"))
-        .join(".agent")
-        .join("skills");
-
     let dst = central_dir.join(slug);
 
     if dst.exists() {

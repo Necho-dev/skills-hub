@@ -8,6 +8,7 @@ pub async fn batch_install_collection(
     skill_ids: Vec<String>,
     platform_paths: Vec<String>,
     overwrite: bool,
+    central_dir: Option<String>,
     lock: State<'_, SymlinkLock>,
 ) -> Result<Vec<InstallResult>, String> {
     let mut results = Vec::new();
@@ -18,6 +19,7 @@ pub async fn batch_install_collection(
                 skill_id.clone(),
                 platform_path.clone(),
                 overwrite,
+                central_dir.clone(),
                 lock.clone(),
             )
             .await;

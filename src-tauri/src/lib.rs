@@ -22,6 +22,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             SqlBuilder::default()
                 .add_migrations("sqlite:skillshub.db", migrations)
@@ -49,6 +51,9 @@ pub fn run() {
             commands::skills::scan_platform_native_skills,
             commands::skills::move_skill_to_central,
             commands::skills::link_project_skill_to_central,
+            commands::skills::migrate_central_dir,
+            commands::skills::list_skill_files,
+            commands::skills::read_skill_file,
             // projects
             commands::projects::scan_project_dirs,
             // github

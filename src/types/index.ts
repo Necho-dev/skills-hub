@@ -184,6 +184,16 @@ export interface NativeSkill {
   platformSkillsPath: string;
 }
 
+export interface SkillFileNode {
+  name: string;
+  /** 完整绝对路径 */
+  path: string;
+  /** 相对于技能根目录的路径 */
+  rel_path: string;
+  is_dir: boolean;
+  children: SkillFileNode[];
+}
+
 export type InstallTaskStatus = 'pending' | 'installing' | 'done' | 'error';
 
 export interface InstallTask {
