@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, File, FileCode, FileJson, Settings, Terminal, Globe, FileType, Database, Image } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, FileCode, FileJson, Settings, Terminal, Globe, FileType, Database, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { SkillFileNode } from '@/types';
 
@@ -172,15 +172,6 @@ function TreeNode({ node, depth, selectedPath, onSelect }: TreeNodeProps) {
       )}
     </div>
   );
-}
-
-function countFiles(nodes: SkillFileNode[]): number {
-  let count = 0;
-  for (const node of nodes) {
-    if (node.is_dir) count += countFiles(node.children);
-    else count++;
-  }
-  return count;
 }
 
 export function SkillFileTree({ nodes, selectedPath, onSelect, collapsed }: SkillFileTreeProps) {
