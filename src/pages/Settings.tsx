@@ -1653,7 +1653,12 @@ function AboutTab() {
         <div className="border rounded-xl bg-white p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ArrowUpCircle size={15} className="text-purple-500" />
+              {updateStatus === 'upToDate'
+                ? <CheckCircle2 size={15} className="text-emerald-500" />
+                : updateStatus === 'checking'
+                  ? <Loader2 size={15} className="text-purple-400 animate-spin" />
+                  : <ArrowUpCircle size={15} className="text-purple-500" />
+              }
               <span className="text-xs font-medium text-gray-700">
                 {updateStatus === 'idle' && '检查是否有新版本可用'}
                 {updateStatus === 'checking' && '正在检查更新...'}
@@ -1673,14 +1678,6 @@ function AboutTab() {
                 <RefreshCw size={12} />
                 检查更新
               </button>
-            )}
-
-            {updateStatus === 'checking' && (
-              <Loader2 size={14} className="text-purple-400 animate-spin" />
-            )}
-
-            {updateStatus === 'upToDate' && (
-              <CheckCircle2 size={14} className="text-emerald-500" />
             )}
 
             {updateStatus === 'updateAvailable' && (
